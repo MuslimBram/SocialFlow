@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "Workspace": {
+      "title": "Workspace",
+      "description": "A collaborative environment for social media management",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "plan": { "type": "string", "enum": ["free", "pro", "enterprise"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId", "plan"]
+    },
+    "SocialAccount": {
+      "title": "Social Account",
+      "description": "A connected social media profile",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "platform": { "type": "string", "enum": ["facebook", "instagram", "linkedin", "twitter", "telegram"] },
+        "status": { "type": "string", "enum": ["connected", "error", "expired"] },
+        "profileName": { "type": "string" },
+        "profileImage": { "type": "string" },
+        "profileId": { "type": "string" },
+        "accessToken": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "platform", "status"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "A content piece to be published",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "content": { "type": "string" },
+        "media": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["draft", "scheduled", "publishing", "published", "failed"] },
+        "scheduledAt": { "type": "string", "format": "date-time" },
+        "accountIds": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "content", "status", "accountIds"]
+    },
+    "PublishingLog": {
+      "title": "Publishing Log",
+      "description": "Record of a publishing attempt",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "accountId": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "error"] },
+        "errorMessage": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "accountId", "status", "timestamp"]
+    },
+    "MediaAsset": {
+      "title": "Media Asset",
+      "description": "A media file stored in the workspace library",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "type": { "type": "string", "enum": ["image", "video"] },
+        "mimeType": { "type": "string" },
+        "size": { "type": "integer" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["url", "type", "name", "createdAt"]
+    }
+  },
+  "firestore": {
+    "workspaces/{workspaceId}": {
+      "schema": "Workspace",
+      "description": "Main workspace definitions"
+    },
+    "workspaces/{workspaceId}/social_accounts/{accountId}": {
+      "schema": "SocialAccount",
+      "description": "Social accounts linked to a workspace"
+    },
+    "workspaces/{workspaceId}/posts/{postId}": {
+      "schema": "Post",
+      "description": "Posts managed within a workspace"
+    },
+    "workspaces/{workspaceId}/publishing_logs/{logId}": {
+      "schema": "PublishingLog",
+      "description": "Logs of publishing actions"
+    },
+    "workspaces/{workspaceId}/media/{assetId}": {
+      "schema": "MediaAsset",
+      "description": "Media assets in the library"
+    }
+  }
+}

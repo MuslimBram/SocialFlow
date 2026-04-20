@@ -1,0 +1,130 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny Catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 3. Primitive Definitions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Helper to check if user has access to the workspace (Member or Owner)
+    function hasWorkspaceAccess(workspaceId) {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)) ||
+        get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid
+      );
+    }
+
+    // 1. Workspaces
+    match /workspaces/{workspaceId} {
+      allow get: if isSignedIn() && hasWorkspaceAccess(workspaceId);
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || exists(/databases/$(database)/documents/workspaces/$(workspaceId)/members/$(request.auth.uid)));
+      
+      allow create: if isSignedIn() 
+        && isValidId(workspaceId)
+        && incoming().ownerId == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().name is string && incoming().name.size() > 0 && incoming().name.size() <= 100
+        && incoming().plan in ['free', 'pro', 'enterprise'];
+
+      allow update: if isSignedIn() 
+        && (existing().ownerId == request.auth.uid)
+        && incoming().ownerId == existing().ownerId // Immutable
+        && incoming().createdAt == existing().createdAt // Immutable
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'plan', 'deleted', 'deletedAt']);
+
+      allow delete: if false; // Prefer soft-delete via update
+
+      // Members Subcollection
+      match /members/{memberId} {
+        allow read: if hasWorkspaceAccess(workspaceId);
+        allow create: if isSignedIn() && (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
+          && incoming().role in ['admin', 'editor', 'viewer']
+          && incoming().joinedAt == request.time;
+        allow update: if isSignedIn() && (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid)
+          && incoming().role in ['admin', 'editor', 'viewer'];
+        allow delete: if isSignedIn() && (get(/databases/$(database)/documents/workspaces/$(workspaceId)).data.ownerId == request.auth.uid);
+      }
+
+      // 7. Media Assets
+      match /media/{assetId} {
+        allow read: if hasWorkspaceAccess(workspaceId);
+        allow create: if hasWorkspaceAccess(workspaceId)
+          && isValidId(assetId)
+          && incoming().type in ['image', 'video']
+          && incoming().createdAt == request.time;
+        allow update: if hasWorkspaceAccess(workspaceId)
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'url', 'size', 'mimeType']);
+        allow delete: if hasWorkspaceAccess(workspaceId);
+      }
+    }
+
+    // 4. Social Accounts
+    match /workspaces/{workspaceId}/social_accounts/{accountId} {
+      allow read: if hasWorkspaceAccess(workspaceId);
+      allow create: if hasWorkspaceAccess(workspaceId) 
+        && isValidId(accountId)
+        && incoming().workspaceId == workspaceId
+        && incoming().platform in ['facebook', 'instagram', 'linkedin', 'twitter', 'telegram']
+        && incoming().status in ['connected', 'error', 'expired'];
+      
+      allow update: if hasWorkspaceAccess(workspaceId)
+        && incoming().workspaceId == existing().workspaceId
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'accessToken', 'profileName', 'profileImage', 'updatedAt'])
+        && incoming().updatedAt == request.time;
+      
+      allow delete: if hasWorkspaceAccess(workspaceId);
+    }
+
+    // 5. Posts
+    match /workspaces/{workspaceId}/posts/{postId} {
+      allow read: if hasWorkspaceAccess(workspaceId);
+      allow create: if hasWorkspaceAccess(workspaceId)
+        && isValidId(postId)
+        && incoming().workspaceId == workspaceId
+        && incoming().status in ['draft', 'scheduled', 'publishing', 'published', 'failed']
+        && incoming().createdAt == request.time;
+      
+      allow update: if hasWorkspaceAccess(workspaceId)
+        && incoming().workspaceId == existing().workspaceId
+        && incoming().createdAt == existing().createdAt
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['content', 'media', 'status', 'scheduledAt', 'accountIds', 'updatedAt', 'retryCount', 'errorMessage'])
+        )
+        && incoming().updatedAt == request.time;
+      
+      allow delete: if hasWorkspaceAccess(workspaceId);
+    }
+
+    // 6. Publishing Logs
+    match /workspaces/{workspaceId}/publishing_logs/{logId} {
+      allow read: if hasWorkspaceAccess(workspaceId);
+      allow create: if hasWorkspaceAccess(workspaceId)
+        && isValidId(logId)
+        && incoming().timestamp == request.time;
+      // Logs are immutable
+      allow update, delete: if false;
+    }
+  }
+}
